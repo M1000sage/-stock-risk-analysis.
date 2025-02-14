@@ -1,0 +1,93 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def get_stock_data(ticker):
+    try:
+        stock_info = yf.Ticker(ticker)
+        history = stock_info.history(period="1d")
+
+        if history.empty:
+            print(f"No data found for {ticker}. Check the ticker symbol on Yahoo Finance.")
+            return None
+
+        stock = yf.download(ticker, period="max")
+        if stock.empty:
+            print(f"No data found for {ticker}. Check the ticker symbol.")
+            return None
+
+        if "Adj Close" in stock.columns:
+            stock["Price"] = stock["Adj Close"]
+        elif "Close" in stock.columns:
+            stock["Price"] = stock["Close"]
+        else:
+            print(f"Error: Neither 'Adj Close' nor 'Close' data is available for {ticker}.")
+            return None
+
+        stock["Returns"] = stock["Price"].pct_change()
+        return stock
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        return None
+
+def risk_analysis(stock_data):
+    stock_returns = stock_data["Returns"].dropna()
+    volatility = np.std(stock_returns) * np.sqrt(252)
+    VaR_95 = np.percentile(stock_returns, 5)
+    CVaR_95 = stock_returns[stock_returns <= VaR_95].mean()
+    sharpe_ratio = stock_returns.mean() / np.std(stock_returns) * np.sqrt(252)
+    return {"Volatility": volatility, "VaR_95": VaR_95, "CVaR_95": CVaR_95, "Sharpe Ratio": sharpe_ratio}
+
+def plot_stock(stock_data, ticker):
+    plt.figure(figsize=(12, 6))
+    plt.plot(stock_data.index, stock_data["Price"], label="Stock Price")
+    plt.title(f"{ticker} Stock Price History")
+    plt.xlabel("Date")
+    plt.ylabel("Price")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def plot_returns(stock_data, ticker):
+    sns.histplot(stock_data["Returns"].dropna(), bins=50, kde=True)
+    plt.title(f"{ticker} Daily Returns Distribution")
+    plt.xlabel("Daily Return")
+    plt.ylabel("Frequency")
+    plt.show()
+
+def main():
+    ticker = input("Enter stock ticker (e.g., AAPL or TATAMOTORS for India): ").upper()
+
+    if ticker.isalpha() and len(ticker) > 2:
+        primary_ticker = ticker + ".NS"
+        fallback_ticker = ticker + ".BO"
+
+        stock_data = get_stock_data(primary_ticker)
+        if stock_data is None:
+            print(f"Trying BSE ticker: {fallback_ticker}")
+            stock_data = get_stock_data(fallback_ticker)
+
+        if stock_data is None:
+            print(f"Failed to fetch data for {ticker}. Check the symbol on Yahoo Finance.")
+            return
+    else:
+        stock_data = get_stock_data(ticker)
+        if stock_data is None:
+            return
+
+    risks = risk_analysis(stock_data)
+    print("\nRisk Analysis for Entire Market Period:")
+    for key, value in risks.items():
+        print(f"{key}: {value:.4f}")
+
+    filename = f"{ticker}_stock_data_full_history.csv"
+    stock_data.to_csv(filename)
+    print(f"\nStock data saved as {filename}")
+
+    plot_stock(stock_data, ticker)
+    plot_returns(stock_data, ticker)
+
+if __name__ == "__main__":
+    main()
